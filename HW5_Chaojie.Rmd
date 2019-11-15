@@ -1,0 +1,167 @@
+---
+title: 'Machine Learning 2019: Tree-Based Methods'
+author: "Sonali Narang"
+date: "10/28/2019"
+output:
+  pdf: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Homework
+
+1. Attempt a regression tree-based method (not covered in this tutorial) on a reasonable dataset of your choice. Explain the results.
+
+Tree-based method: Bagging trees
+```{r}
+library(mlbench)
+library(adabag)
+library(tree)
+library(randomForest)
+library(gbm)
+library(caret)
+library(ggplot2)
+#install.packages("fastAdaboost")
+library("fastAdaboost")
+```
+
+```{r}
+data(BreastCancer)
+BreastCancer
+```
+
+```{r}
+BreastCancer_num = transform(BreastCancer, Id = as.numeric(Id), 
+                         Cl.thickness = as.numeric(Cl.thickness),
+                         Cell.size = as.numeric(Cell.size),
+                         Cell.shape = as.numeric(Cell.shape), 
+                         Marg.adhesion = as.numeric(Marg.adhesion),
+                         Epith.c.size = as.numeric(Epith.c.size),
+                         Bare.nuclei = as.numeric(Bare.nuclei), 
+                         Bl.cromatin = as.numeric(Bl.cromatin), 
+                         Normal.nucleoli = as.numeric(Normal.nucleoli),
+                         Mitoses = as.numeric(Mitoses))
+BreastCancer_num[is.na(BreastCancer_num)] = 0
+BreastCancer_num
+```
+
+```{r}
+# split the data into training set and testing set
+set.seed(24)
+train_size <- floor(0.75 * nrow(BreastCancer))
+train_pos <- sample(seq_len(nrow(BreastCancer)), size = train_size)
+train_data <- BreastCancer_num[train_pos, ]
+test_data <- BreastCancer_num[-train_pos, ]
+```
+
+```{r}
+# Tree-based method: Bagging trees
+BreastCancer.bagging <- bagging(Class ~ ., data = train_data, coob=TRUE, mfinal=20)
+BreastCancer.bagging.pre <- predict.bagging(BreastCancer.bagging, newdata = test_data, newmfinal=10)
+BreastCancer.bagging.pre$confusion
+BreastCancer.bagging.pre$error
+```
+
+```{r}
+# Compare the prediction results between Bagging trees and Classification Tree
+# Tree Tree-based method: Classification Tree
+BreastCancer.tree <- tree(Class ~ ., data = train_data)
+BreastCancer.tree.pre <- predict(BreastCancer.tree, test_data, type="class")
+ConfusionMatrix <- with(test_data, table(BreastCancer.tree.pre, Class))
+Error = (ConfusionMatrix[2]+ConfusionMatrix[3])/dim(test_data)[1]
+ConfusionMatrix
+Error
+```
+
+Decision trees suffer from high variance, bagging is the technique used to reduce the variance of predictions.
+When we compare the prediction results between Bagging trees and Classification Tree, Bagging trees usually give a better prediction with smaller error.
+In this data set, Classification Tree is good enough to make prediction with very small error, Bagging trees may sometimes give a worse prediction.
+
+
+2. Attempt both a bagging and boosting method on a reasonable dataset of your choice. Explain the results.
+
+```{r}
+data(BreastCancer)
+BreastCancer
+```
+
+```{r}
+# split the data into training set and testing set
+BreastCancer_num = transform(BreastCancer, Id = as.numeric(Id), 
+                         Cl.thickness = as.numeric(Cl.thickness),
+                         Cell.size = as.numeric(Cell.size),
+                         Cell.shape = as.numeric(Cell.shape), 
+                         Marg.adhesion = as.numeric(Marg.adhesion),
+                         Epith.c.size = as.numeric(Epith.c.size),
+                         Bare.nuclei = as.numeric(Bare.nuclei), 
+                         Bl.cromatin = as.numeric(Bl.cromatin), 
+                         Normal.nucleoli = as.numeric(Normal.nucleoli),
+                         Mitoses = as.numeric(Mitoses))
+BreastCancer_num[is.na(BreastCancer_num)] = 0
+BreastCancer_num
+set.seed(24)
+train_size <- floor(0.75 * nrow(BreastCancer))
+train_pos <- sample(seq_len(nrow(BreastCancer)), size = train_size)
+train_data <- BreastCancer_num[train_pos, ]
+test_data <- BreastCancer_num[-train_pos, ]
+```
+
+Bagging Method: Random Forest
+The output are Confusion Matrix and prediction error
+```{r}
+rf.BreastCancer <- randomForest(Class~., train_data)
+pred = predict(rf.BreastCancer, test_data)
+ConfusionMatrix <- with(test_data, table(pred, Class))
+Error = (ConfusionMatrix[2]+ConfusionMatrix[3])/dim(test_data)[1]
+ConfusionMatrix
+Error
+```
+
+Boosting Method: AdaBoost
+The output are Confusion Matrix and prediction error
+```{r}
+adaboost.BreastCancer = adaboost(Class~., data = train_data,10)
+pred = predict(adaboost.BreastCancer, test_data)
+ConfusionMatrix <- with(test_data, table(pred$class, Class))
+Error = (ConfusionMatrix[2]+ConfusionMatrix[3])/dim(test_data)[1]
+ConfusionMatrix
+Error
+```
+
+Compare results from Random Forest and AdaBoost: Using 10-fold cross-validation, plot the distribution of errors of two different methods
+```{r}
+folds <- createFolds(y=BreastCancer$Class,k=10)
+Error.RandomForest <- c()
+Error.AdaBoost <- c()
+# 10-fold cross-validation
+for(i in 1:10){
+  fold_test <- BreastCancer_num[folds[[i]],]
+  fold_train <- BreastCancer_num[-folds[[i]],]
+  
+  # Bagging Method: Random Forest
+  rf.BreastCancer <- randomForest(Class~., fold_train)
+  pred = predict(rf.BreastCancer, fold_test)
+  ConfusionMatrix <- with(fold_test, table(pred, Class))
+  rf.Error = (ConfusionMatrix[2]+ConfusionMatrix[3])/dim(test_data)[1]
+  Error.RandomForest <- c(Error.RandomForest,c(rf.Error))
+  
+  # Boosting Method: AdaBoost
+  adaboost.BreastCancer = adaboost(Class~., data = fold_train,10)
+  pred = predict(adaboost.BreastCancer, fold_test)
+  ConfusionMatrix <- with(fold_test, table(pred$class, Class))
+  adaboost.Error = (ConfusionMatrix[2]+ConfusionMatrix[3])/dim(test_data)[1]
+  Error.AdaBoost <- c(Error.AdaBoost,c(rf.Error))
+}
+
+df = data.frame(Error=c(Error.RandomForest,Error.AdaBoost),Methods=c(rep("RandomForest", 10), rep("AdaBoost", 10)))  
+g <- ggplot(df,aes(x = Methods, y = Error, color = Methods))+
+  geom_boxplot()+
+  geom_jitter(shape = 1, width = 0.1)
+g
+```
+Random Forest and AdaBoost give similar performance of prediction in this dataset. They both give very low error about 0.01.
+
+
